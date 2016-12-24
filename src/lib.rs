@@ -31,26 +31,31 @@
 //! }
 //! ```
 
-#![crate_name = "bincode"]
-#![crate_type = "rlib"]
-#![crate_type = "dylib"]
-
 #![doc(html_logo_url = "./icon.png")]
 
-#[cfg(feature = "rustc-serialize")]
-extern crate rustc_serialize as rustc_serialize_crate;
+//#![feature(proc_macro, collections)]
+#![no_std]
+
 extern crate byteorder;
-extern crate num_traits;
-#[cfg(feature = "serde")]
+#[macro_use]
 extern crate serde as serde_crate;
+#[cfg(feature = "collections")]
+#[macro_use]
+extern crate collections;
+extern crate core_io;
 
+#[cfg(not(any(feature = "std", feature = "collections")))]
+macro_rules! format {
+    ($format_string:expr, $($v:expr),+) => {
+        $format_string
+    }
+}
 
+#[cfg(any(feature = "std", feature = "collections"))]
 pub use refbox::{RefBox, StrBox, SliceBox};
 
+#[cfg(any(feature = "std", feature = "collections"))]
 mod refbox;
-#[cfg(feature = "rustc-serialize")]
-pub mod rustc_serialize;
-#[cfg(feature = "serde")]
 pub mod serde;
 
 /// A limit on the amount of bytes that can be read or written.
@@ -75,5 +80,20 @@ pub mod serde;
 pub enum SizeLimit {
     Infinite,
     Bounded(u64)
+}
+
+#[derive(Debug)]
+pub struct OrphIoError(pub core_io::Error);
+
+impl serde_crate::error::Error for OrphIoError {
+    fn description(&self) -> &str {
+        "some io error"
+    }
+}
+
+impl core::fmt::Display for OrphIoError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        self.0.fmt(f)
+    }
 }
 

@@ -2,8 +2,11 @@
 //! that use the `serde` crate for the serializable and deserializable
 //! implementation.
 
-use std::io::{Write, Read};
+use core_io::{Write, Read};
 use ::SizeLimit;
+
+#[cfg(feature = "collections")]
+use collections::{Vec};
 
 pub use self::reader::{
     Deserializer,
@@ -52,6 +55,7 @@ pub fn serialize_into<W, T>(writer: &mut W, value: &T, size_limit: SizeLimit) ->
 ///
 /// If the serialization would take more bytes than allowed by `size_limit`,
 /// an error is returned.
+#[cfg(any(feature = "std", feature = "collections"))]
 pub fn serialize<T>(value: &T, size_limit: SizeLimit) -> SerializeResult<Vec<u8>>
     where T: serde::Serialize,
 {
@@ -73,12 +77,19 @@ pub fn serialize<T>(value: &T, size_limit: SizeLimit) -> SerializeResult<Vec<u8>
     Ok(writer)
 }
 
+pub fn serialize_bounded<T>(value: &T, mut buf: &mut [u8]) -> SerializeResult<()>
+    where T: serde::Serialize
+{
+    try!(serialize_into(&mut buf, value, SizeLimit::Infinite));
+    Ok(())
+}
+
 /// Returns the size that an object would be if serialized using bincode.
 ///
 /// This is used internally as part of the check for encode_into, but it can
 /// be useful for preallocating buffers if thats your style.
 pub fn serialized_size<T: serde::Serialize>(value: &T) -> u64 {
-    use std::u64::MAX;
+    use core::u64::MAX;
     let mut size_checker = SizeChecker::new(MAX);
     value.serialize(&mut size_checker).ok();
     size_checker.written

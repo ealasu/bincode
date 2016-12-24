@@ -1,28 +1,34 @@
-use std::error::Error;
-use std::fmt;
-use std::io::Error as IoError;
-use std::io::Write;
-use std::u32;
+use core::fmt;
+use core_io::Error as IoError;
+use core_io::Write;
+use core::u32;
+
+#[cfg(feature = "collections")]
+use collections::{String};
 
 use serde_crate as serde;
 
-use byteorder::{BigEndian, WriteBytesExt};
+use byteorder::{LittleEndian, WriteBytesExt};
 
 pub type SerializeResult<T> = Result<T, SerializeError>;
 
+use serde_crate::error::Error;
 
 /// An error that can be produced during encoding.
 #[derive(Debug)]
 pub enum SerializeError {
     /// An error originating from the underlying `Writer`.
-    IoError(IoError),
+    IoError(::OrphIoError),
     /// An object could not be encoded with the given size limit.
     ///
     /// This error is returned before any bytes are written to the
     /// output `Writer`.
     SizeLimit,
     /// A custom error message
-    Custom(String)
+    #[cfg(any(feature = "std", feature = "collections"))]
+    Custom(String),
+    #[cfg(not(any(feature = "std", feature = "collections")))]
+    Custom(&'static str),
 }
 
 /// An Serializer that encodes values directly into a Writer.
@@ -34,11 +40,16 @@ pub struct Serializer<'a, W: 'a> {
 }
 
 fn wrap_io(err: IoError) -> SerializeError {
-    SerializeError::IoError(err)
+    SerializeError::IoError(::OrphIoError(err))
 }
 
 impl serde::ser::Error for SerializeError {
+    #[cfg(any(feature = "std", feature = "collections"))]
     fn custom<T: Into<String>>(msg: T) -> Self {
+        SerializeError::Custom(msg.into())
+    }
+    #[cfg(not(any(feature = "std", feature = "collections")))]
+    fn custom<T: Into<&'static str>>(msg: T) -> Self {
         SerializeError::Custom(msg.into())
     }
 }
@@ -110,15 +121,15 @@ impl<'a, W: Write> serde::Serializer for Serializer<'a, W> {
     }
 
     fn serialize_u16(&mut self, v: u16) -> SerializeResult<()> {
-        self.writer.write_u16::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_u16::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_u32(&mut self, v: u32) -> SerializeResult<()> {
-        self.writer.write_u32::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_u32::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_u64(&mut self, v: u64) -> SerializeResult<()> {
-        self.writer.write_u64::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_u64::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_usize(&mut self, v: usize) -> SerializeResult<()> {
@@ -130,15 +141,15 @@ impl<'a, W: Write> serde::Serializer for Serializer<'a, W> {
     }
 
     fn serialize_i16(&mut self, v: i16) -> SerializeResult<()> {
-        self.writer.write_i16::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_i16::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_i32(&mut self, v: i32) -> SerializeResult<()> {
-        self.writer.write_i32::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_i32::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_i64(&mut self, v: i64) -> SerializeResult<()> {
-        self.writer.write_i64::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_i64::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_isize(&mut self, v: isize) -> SerializeResult<()> {
@@ -146,25 +157,28 @@ impl<'a, W: Write> serde::Serializer for Serializer<'a, W> {
     }
 
     fn serialize_f32(&mut self, v: f32) -> SerializeResult<()> {
-        self.writer.write_f32::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_f32::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_f64(&mut self, v: f64) -> SerializeResult<()> {
-        self.writer.write_f64::<BigEndian>(v).map_err(wrap_io)
+        self.writer.write_f64::<LittleEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_str(&mut self, v: &str) -> SerializeResult<()> {
         try!(self.serialize_usize(v.len()));
-        self.writer.write_all(v.as_bytes()).map_err(SerializeError::IoError)
+        self.writer.write_all(v.as_bytes()).map_err(::OrphIoError).map_err(SerializeError::IoError)
     }
 
     fn serialize_char(&mut self, c: char) -> SerializeResult<()> {
-        self.writer.write_all(encode_utf8(c).as_slice()).map_err(SerializeError::IoError)
+        self.writer.write_all(encode_utf8(c).as_slice()).map_err(::OrphIoError).map_err(SerializeError::IoError)
     }
 
     fn serialize_bytes(&mut self, v: &[u8]) -> SerializeResult<()> {
-        try!(self.serialize_usize(v.len()));
-        self.writer.write_all(v).map_err(SerializeError::IoError)
+        let mut state = try!(self.serialize_seq(Some(v.len())));
+        for c in v {
+            try!(self.serialize_seq_elt(&mut state, c));
+        }
+        self.serialize_seq_end(state)
     }
 
     fn serialize_none(&mut self) -> SerializeResult<()> {
@@ -348,7 +362,7 @@ impl SizeChecker {
     }
 
     fn add_value<T>(&mut self, t: T) -> SerializeResult<()> {
-        use std::mem::size_of_val;
+        use core::mem::size_of_val;
         self.add_raw(size_of_val(&t))
     }
 
@@ -437,8 +451,11 @@ impl serde::Serializer for SizeChecker {
     }
 
     fn serialize_bytes(&mut self, v: &[u8]) -> SerializeResult<()> {
-        try!(self.add_value(0 as u64));
-        self.add_raw(v.len())
+        let mut state = try!(self.serialize_seq(Some(v.len())));
+        for c in v {
+            try!(self.serialize_seq_elt(&mut state, c));
+        }
+        self.serialize_seq_end(state)
     }
 
     fn serialize_none(&mut self) -> SerializeResult<()> {

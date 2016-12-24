@@ -1,12 +1,13 @@
-use std::io::Read;
-use std::io::Error as IoError;
-use std::error::Error;
-use std::fmt;
-use std::convert::From;
+use core_io::Read;
+use core_io::Error as IoError;
+use core::fmt;
+use core::convert::From;
 
-use byteorder::{BigEndian, ReadBytesExt};
-use num_traits;
+#[cfg(feature = "collections")]
+use collections::{Vec, String};
+use byteorder::{LittleEndian, ReadBytesExt};
 use serde_crate as serde;
+use serde_crate::error::Error;
 use serde_crate::de::value::ValueDeserializer;
 
 use ::SizeLimit;
@@ -14,7 +15,10 @@ use ::SizeLimit;
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct InvalidEncoding {
     pub desc: &'static str,
+    #[cfg(any(feature = "std", feature = "collections"))]
     pub detail: Option<String>,
+    #[cfg(not(any(feature = "std", feature = "collections")))]
+    pub detail: Option<&'static str>,
 }
 
 impl fmt::Display for InvalidEncoding {
@@ -36,7 +40,7 @@ impl fmt::Display for InvalidEncoding {
 pub enum DeserializeError {
     /// If the error stems from the reader that is being used
     /// during decoding, that error will be stored and returned here.
-    IoError(IoError),
+    IoError(::OrphIoError),
     /// If the bytes in the reader are not decodable because of an invalid
     /// encoding, this error will be returned.  This error is only possible
     /// if a stream is corrupted.  A stream produced from `encode` or `encode_into`
@@ -71,7 +75,7 @@ impl Error for DeserializeError {
 
 impl From<IoError> for DeserializeError {
     fn from(err: IoError) -> DeserializeError {
-        DeserializeError::IoError(err)
+        DeserializeError::IoError(::OrphIoError(err))
     }
 }
 
@@ -97,7 +101,7 @@ impl fmt::Display for DeserializeError {
 }
 
 impl serde::de::Error for DeserializeError {
-    fn custom<T: Into<String>>(desc: T) -> DeserializeError {
+    fn custom<T: Into<&'static str>>(desc: T) -> Self {
         DeserializeError::Serde(serde::de::value::Error::Custom(desc.into()))
     }
 
@@ -149,10 +153,11 @@ impl<'a, R: Read> Deserializer<'a, R> {
     }
 
     fn read_type<T>(&mut self) -> Result<(), DeserializeError> {
-        use std::mem::size_of;
+        use core::mem::size_of;
         self.read_bytes(size_of::<T>() as u64)
     }
 
+    #[cfg(any(feature = "std", feature = "collections"))]
     fn read_string(&mut self) -> DeserializeResult<String> {
         let len = try!(serde::Deserialize::deserialize(self));
         try!(self.read_bytes(len));
@@ -175,7 +180,7 @@ macro_rules! impl_nums {
             where V: serde::de::Visitor,
         {
             try!(self.read_type::<$ty>());
-            let value = try!(self.reader.$reader_method::<BigEndian>());
+            let value = try!(self.reader.$reader_method::<LittleEndian>());
             visitor.$visitor_method(value)
         }
     }
@@ -232,10 +237,12 @@ impl<'a, R: Read> serde::Deserializer for Deserializer<'a, R> {
         where V: serde::de::Visitor,
     {
         try!(self.read_type::<u64>());
-        let value = try!(self.reader.read_u64::<BigEndian>());
-        match num_traits::cast(value) {
-            Some(value) => visitor.visit_usize(value),
-            None => Err(DeserializeError::Serde(serde::de::value::Error::Custom("expected usize".into())))
+        let value = try!(self.reader.read_u64::<LittleEndian>());
+
+        if value > (usize::max_value() as u64) || value < (usize::min_value() as u64) {
+            Err(DeserializeError::Serde(serde::de::value::Error::Custom("expected usize".into())))
+        } else {
+            visitor.visit_usize(value as usize)
         }
     }
 
@@ -252,10 +259,11 @@ impl<'a, R: Read> serde::Deserializer for Deserializer<'a, R> {
         where V: serde::de::Visitor,
     {
         try!(self.read_type::<i64>());
-        let value = try!(self.reader.read_i64::<BigEndian>());
-        match num_traits::cast(value) {
-            Some(value) => visitor.visit_isize(value),
-            None => Err(DeserializeError::Serde(serde::de::value::Error::Custom("expected isize".into()))),
+        let value = try!(self.reader.read_i64::<LittleEndian>());
+        if value < (isize::min_value() as i64) || value > (isize::max_value() as i64) {
+            Err(DeserializeError::Serde(serde::de::value::Error::Custom("expected isize".into())))
+        } else {
+            visitor.visit_isize(value as isize)
         }
     }
 
@@ -268,7 +276,7 @@ impl<'a, R: Read> serde::Deserializer for Deserializer<'a, R> {
     fn deserialize_char<V>(&mut self, mut visitor: V) -> DeserializeResult<V::Value>
         where V: serde::de::Visitor,
     {
-        use std::str;
+        use core::str;
 
         let error = DeserializeError::InvalidEncoding(InvalidEncoding {
             desc: "Invalid char encoding",
@@ -303,16 +311,32 @@ impl<'a, R: Read> serde::Deserializer for Deserializer<'a, R> {
         visitor.visit_char(res)
     }
 
+    #[cfg(any(feature = "std", feature = "collections"))]
     fn deserialize_str<V>(&mut self, mut visitor: V) -> DeserializeResult<V::Value>
         where V: serde::de::Visitor,
     {
         visitor.visit_str(&try!(self.read_string()))
     }
 
+    #[cfg(not(any(feature = "std", feature = "collections")))]
+    fn deserialize_str<V>(&mut self, mut visitor: V) -> DeserializeResult<V::Value>
+        where V: serde::de::Visitor,
+    {
+        unimplemented!();
+    }
+
+    #[cfg(any(feature = "std", feature = "collections"))]
     fn deserialize_string<V>(&mut self, mut visitor: V) -> DeserializeResult<V::Value>
         where V: serde::de::Visitor,
     {
         visitor.visit_string(try!(self.read_string()))
+    }
+
+    #[cfg(not(any(feature = "std", feature = "collections")))]
+    fn deserialize_string<V>(&mut self, mut visitor: V) -> DeserializeResult<V::Value>
+        where V: serde::de::Visitor,
+    {
+        unimplemented!();
     }
 
     fn deserialize_bytes<V>(&mut self, visitor: V) -> DeserializeResult<V::Value>

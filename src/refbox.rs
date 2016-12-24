@@ -1,11 +1,7 @@
-use std::boxed::Box;
-use std::ops::Deref;
+use collections::boxed::Box;
+use collections::{Vec, String};
 
-#[cfg(feature = "rustc-serialize")]
-use rustc_serialize_crate::{Encodable, Encoder, Decodable, Decoder};
-
-#[cfg(feature = "serde")]
-use serde_crate as serde;
+use core::ops::Deref;
 
 /// A struct for encoding nested reference types.
 ///
