@@ -8,7 +8,7 @@ use collections::{String};
 
 use serde_crate as serde;
 
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{BigEndian, WriteBytesExt};
 
 pub type SerializeResult<T> = Result<T, SerializeError>;
 
@@ -121,15 +121,15 @@ impl<'a, W: Write> serde::Serializer for Serializer<'a, W> {
     }
 
     fn serialize_u16(&mut self, v: u16) -> SerializeResult<()> {
-        self.writer.write_u16::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_u16::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_u32(&mut self, v: u32) -> SerializeResult<()> {
-        self.writer.write_u32::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_u32::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_u64(&mut self, v: u64) -> SerializeResult<()> {
-        self.writer.write_u64::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_u64::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_usize(&mut self, v: usize) -> SerializeResult<()> {
@@ -141,15 +141,15 @@ impl<'a, W: Write> serde::Serializer for Serializer<'a, W> {
     }
 
     fn serialize_i16(&mut self, v: i16) -> SerializeResult<()> {
-        self.writer.write_i16::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_i16::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_i32(&mut self, v: i32) -> SerializeResult<()> {
-        self.writer.write_i32::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_i32::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_i64(&mut self, v: i64) -> SerializeResult<()> {
-        self.writer.write_i64::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_i64::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_isize(&mut self, v: isize) -> SerializeResult<()> {
@@ -157,11 +157,11 @@ impl<'a, W: Write> serde::Serializer for Serializer<'a, W> {
     }
 
     fn serialize_f32(&mut self, v: f32) -> SerializeResult<()> {
-        self.writer.write_f32::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_f32::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_f64(&mut self, v: f64) -> SerializeResult<()> {
-        self.writer.write_f64::<LittleEndian>(v).map_err(wrap_io)
+        self.writer.write_f64::<BigEndian>(v).map_err(wrap_io)
     }
 
     fn serialize_str(&mut self, v: &str) -> SerializeResult<()> {

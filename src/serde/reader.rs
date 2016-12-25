@@ -5,7 +5,7 @@ use core::convert::From;
 
 #[cfg(feature = "collections")]
 use collections::{Vec, String};
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt};
 use serde_crate as serde;
 use serde_crate::error::Error;
 use serde_crate::de::value::ValueDeserializer;
@@ -180,7 +180,7 @@ macro_rules! impl_nums {
             where V: serde::de::Visitor,
         {
             try!(self.read_type::<$ty>());
-            let value = try!(self.reader.$reader_method::<LittleEndian>());
+            let value = try!(self.reader.$reader_method::<BigEndian>());
             visitor.$visitor_method(value)
         }
     }
@@ -237,7 +237,7 @@ impl<'a, R: Read> serde::Deserializer for Deserializer<'a, R> {
         where V: serde::de::Visitor,
     {
         try!(self.read_type::<u64>());
-        let value = try!(self.reader.read_u64::<LittleEndian>());
+        let value = try!(self.reader.read_u64::<BigEndian>());
 
         if value > (usize::max_value() as u64) || value < (usize::min_value() as u64) {
             Err(DeserializeError::Serde(serde::de::value::Error::Custom("expected usize".into())))
@@ -259,7 +259,7 @@ impl<'a, R: Read> serde::Deserializer for Deserializer<'a, R> {
         where V: serde::de::Visitor,
     {
         try!(self.read_type::<i64>());
-        let value = try!(self.reader.read_i64::<LittleEndian>());
+        let value = try!(self.reader.read_i64::<BigEndian>());
         if value < (isize::min_value() as i64) || value > (isize::max_value() as i64) {
             Err(DeserializeError::Serde(serde::de::value::Error::Custom("expected isize".into())))
         } else {

@@ -15,8 +15,9 @@ name = "bincode"
 byteorder_core_io = { version = "0.5", default-features = false }
 serde = { version = "0.8.*", default-features = false }
 #serde_derive = "0.8.*"
-core_io = { version = "0.1" }
+core_io = { version = "*" }
 
 [features]
-std = []
-collections = []
+default = ['std', 'collections']
+std = ['serde/std']
+collections = ['serde/collections']
